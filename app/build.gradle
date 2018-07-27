@@ -25,6 +25,15 @@ android {
             path "CMakeLists.txt"
         }
     }
+    sourceSets {
+        main {
+            assets.srcDirs = ['./assets']
+        }
+    }
+    // Required to enable TF Lite to read model files directly from assets/
+    aaptOptions {
+        noCompress "tflite"
+    }
 }
 
 dependencies {
@@ -33,6 +42,8 @@ dependencies {
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'com.android.support.test:runner:1.0.2'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
-    compileOnly 'com.google.android.things:androidthings:+'
-    implementation"org.jetbrains.kotlin:kotlin-stdlib-jre7:$kotlin_version"
+    compileOnly 'com.google.android.things:androidthings:1.0'
+    implementation"org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation 'com.android.support:support-annotations:27.1.1'
+    implementation 'org.tensorflow:tensorflow-lite:0.1.7'
 }
