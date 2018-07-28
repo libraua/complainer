@@ -7,20 +7,21 @@ import android.media.ImageReader;
 import android.os.Binder;
 import android.os.IBinder;
 import android.support.annotation.Nullable;
+import android.text.SpannableStringBuilder;
 import android.util.Log;
+
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 
 import org.tensorflow.lite.Interpreter;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.util.Collection;
 import java.util.List;
 
 import online.khlivniuk.complainer.CameraHandler;
 import online.khlivniuk.complainer.ImagePreprocessor;
-import online.khlivniuk.complainer.classifier.Recognition;
-import online.khlivniuk.complainer.classifier.TensorFlowHelper;
+import online.khlivniuk.complainer.R;
+import online.khlivniuk.complainer.classifier.ImageClassifier;
+import online.khlivniuk.complainer.classifier.ImageClassifierFloatInception;
 
 public class HomeService extends Service {
     public static final String ACTION_TAKESHOT = "online.khlivniuk.complainer.ACTION_TAKESHOT";
@@ -43,8 +44,8 @@ public class HomeService extends Service {
     /**
      * TF model asset files
      */
-    private static final String LABELS_FILE = "labels.txt";
-    private static final String MODEL_FILE = "mobilenet_quant_v1_224.tflite";
+    private static final String LABELS_FILE = "retrained_labels.txt";
+    private static final String MODEL_FILE = "optimized_graph.lite";
     private static final String TAG = HomeService.class.getSimpleName();
     private final IBinder mBinder = new HomeBinder();
     private boolean mProcessing;
@@ -54,6 +55,7 @@ public class HomeService extends Service {
     private ImagePreprocessor mImagePreprocessor;
     private HomeEventsListener mListener;
     private Bitmap mBitmap;
+    private ImageClassifier classifier;
 
     private void destroyClassifier() {
         mTensorFlowLite.close();
@@ -72,6 +74,10 @@ public class HomeService extends Service {
         super.onCreate();
         initCamera();
         initClassifier();
+        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(getString(R.string.default_web_client_id))
+                .requestEmail()
+                .build();
     }
 
     @Override
@@ -100,36 +106,21 @@ public class HomeService extends Service {
 
     private void initClassifier() {
         try {
-            mTensorFlowLite = new Interpreter(TensorFlowHelper.loadModelFile(this, MODEL_FILE));
-            mLabels = TensorFlowHelper.readLabels(this, LABELS_FILE);
+            classifier = new ImageClassifierFloatInception(this);
         } catch (IOException e) {
-            Log.w(TAG, "Unable to initialize TensorFlow Lite.", e);
+            Log.d(TAG, "Classifier can't be loaded",e);
+            e.printStackTrace();
         }
     }
 
 
-
-
     private void doRecognize(Bitmap image) {
-        // Allocate space for the inference results
-        byte[][] confidencePerLabel = new byte[1][mLabels.size()];
-        // Allocate buffer for image pixels.
-        int[] intValues = new int[TF_INPUT_IMAGE_WIDTH * TF_INPUT_IMAGE_HEIGHT];
-        ByteBuffer imgData = ByteBuffer.allocateDirect(
-                DIM_BATCH_SIZE * TF_INPUT_IMAGE_WIDTH * TF_INPUT_IMAGE_HEIGHT * DIM_PIXEL_SIZE);
-        imgData.order(ByteOrder.nativeOrder());
-
-        // Read image data into buffer formatted for the TensorFlow model
-        TensorFlowHelper.convertBitmapToByteBuffer(image, intValues, imgData);
-
-        // Run inference on the network with the image bytes in imgData as input,
-        // storing results on the confidencePerLabel array.
-        mTensorFlowLite.run(imgData, confidencePerLabel);
-
-        // Get the results with the highest confidence and map them to their labels
-        Collection<Recognition> results = TensorFlowHelper.getBestResults(confidencePerLabel, mLabels);
+        SpannableStringBuilder txtToShow = new SpannableStringBuilder();
+        classifier.classifyFrame(image, txtToShow);
         // Report the results with the highest confidence
-        onPhotoRecognitionReady(results);
+        Log.d(TAG, "RESULT:" + txtToShow.toString());
+
+        onPhotoRecognitionReady(txtToShow.toString());
     }
 
 
@@ -149,7 +140,7 @@ public class HomeService extends Service {
         doRecognize(bitmap);
     }
 
-    private void onPhotoRecognitionReady(Collection<Recognition> results) {
+    private void onPhotoRecognitionReady(String results) {
         Log.d(TAG, "onPhotoRecognitionReady");
         if (mListener != null) {
             mListener.photoProcessed(mBitmap, results);
